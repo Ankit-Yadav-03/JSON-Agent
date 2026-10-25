@@ -26,17 +26,18 @@ class ExtractionError(Exception):
 
 def make_client():
     """Build the Gemini client, failing early with a clear message if the key is missing."""
-    key = os.environ.get("GEMINI_API_KEY")
-    if not key:
+    key = os.environ.get("GEMINI_API_KEY") 
+    if not key or key == "your_api_key_here":
         raise RuntimeError(
-            "No API key found. Copy .env.example to .env"
+            "No API key found. Copy .env.example to .env (next to structured.py) "
             "and set GEMINI_API_KEY to your real key from https://aistudio.google.com/apikey"
         )
     return genai.Client(api_key=key)
 
-def get_structured(prompt, schema, retries=2, client=None):
+
+def get_structured(prompt, schema, retries=2):
     """Return a validated `schema` instance (a BaseModel, list[Model], ...) or raise ExtractionError."""
-    client = make_client()  
+    client = make_client()
     config = types.GenerateContentConfig(  # native constraint: Gemini is forced to the schema
         response_mime_type="application/json", response_schema=schema
     )
@@ -46,11 +47,9 @@ def get_structured(prompt, schema, retries=2, client=None):
         try:
             text = client.models.generate_content(model=MODEL, contents=contents, config=config).text or ""
             return adapter.validate_json(text, strict=True)  # 2. VALIDATION (rejects bad output)
-
         except ValueError as e:  # bad JSON or schema violation (pydantic errors subclass ValueError)
             err = str(e)  # 3. RETRY: feed the exact error back
             contents = f"{prompt}\n\nYour previous output:\n{text}\n\nwas invalid:\n{err}\nReturn corrected JSON."
-
     raise ExtractionError(f"Failed after {retries + 1} attempts. Last error: {err}")
 
 
